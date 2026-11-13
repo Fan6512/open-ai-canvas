@@ -58,7 +58,6 @@ func TestResolveAccessDefaultTTLAndAlignment(t *testing.T) {
 	}
 }
 
-
 func TestResolveAccessPolicyMatrix(t *testing.T) {
 	outboundtest.PublicDNS(t, "s3.amazonaws.com")
 	now := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
