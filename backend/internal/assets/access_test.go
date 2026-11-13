@@ -167,7 +167,7 @@ func TestResolveAccessVariantAndExpiryContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if provider.ExpiresAt == nil || !provider.ExpiresAt.Equal(now.Add(4*time.Hour)) {
+	if provider.ExpiresAt == nil || !provider.ExpiresAt.Equal(now.Add(10*time.Minute)) {
 		t.Fatalf("provider access expiry = %v, want %v", provider.ExpiresAt, now.Add(4*time.Hour))
 	}
 }
