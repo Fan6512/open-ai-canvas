@@ -17,7 +17,7 @@ func TestAccessURLTTLDefaultsAndStoredOverrides(t *testing.T) {
 		t.Fatalf("default storage policy = %+v", defaults.Storage)
 	}
 	for _, tc := range []struct {
-		name, stored         string
+		name, stored             string
 		wantAccess, wantProvider int
 	}{
 		{"unconfigured", "", 600, 600},
