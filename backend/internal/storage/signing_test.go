@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,7 +9,94 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"yingce/backend/internal/outbound"
 )
+
+func TestNormalizeAccessURLTTL(t *testing.T) {
+	tests := []struct {
+		name                  string
+		access, provider      time.Duration
+		wantAccess, wantProvider time.Duration
+	}{
+		{"defaults", 0, 0, 10 * time.Minute, 10 * time.Minute},
+		{"explicit-access", 4 * time.Hour, 0, 4 * time.Hour, 10 * time.Minute},
+		{"explicit-provider", 0, 4 * time.Hour, 10 * time.Minute, 4 * time.Hour},
+		{"both-explicit", 4 * time.Hour, 4 * time.Hour, 4 * time.Hour, 4 * time.Hour},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NormalizeSettings(Settings{Runtime: RuntimePolicy{
+				AccessURLTTL: tc.access, ProviderAccessURLTTL: tc.provider,
+			}})
+			if got.Runtime.AccessURLTTL != tc.wantAccess || got.Runtime.ProviderAccessURLTTL != tc.wantProvider {
+				t.Fatalf("normalized runtime = %+v, want access %v and provider %v", got.Runtime, tc.wantAccess, tc.wantProvider)
+			}
+		})
+	}
+}
+
+func TestDirectSigningPathsAccessURLTTL(t *testing.T) {
+	// Capture the signed request at the transport boundary without contacting storage.
+	transport := outbound.OutboundHTTPClient(time.Second).Transport.(*http.Transport)
+	previous := transport.Proxy
+	t.Cleanup(func() { transport.Proxy = previous })
+	stopped := errors.New("signed request captured")
+	for _, path := range []string{"cdn", "qiniu-s3"} {
+		for _, ttl := range []time.Duration{0, 4 * time.Hour} {
+			t.Run(path+"/"+ttl.String(), func(t *testing.T) {
+				var captured *url.URL
+				transport.Proxy = func(req *http.Request) (*url.URL, error) {
+					captured = req.URL
+					return nil, stopped
+				}
+				setting := Settings{Provider: qiniuKodoProvider, Region: "z0", Bucket: "bucket", CDNBaseURL: "https://media.example.com", AccessKeyID: "test-id", AccessKeySecret: "test-secret",
+					Delivery: DeliverySettings{CDNAuthMode: "qiniu"}, Runtime: RuntimePolicy{AccessURLTTL: ttl}}
+				before := time.Now()
+				var err error
+				if path == "cdn" {
+					_, err = getCDNObjectRange(setting, "test.png", "")
+				} else {
+					_, err = GetQiniuObjectRange(setting, "test.png", "")
+				}
+				after := time.Now()
+				if !errors.Is(err, stopped) || captured == nil {
+					t.Fatalf("capture failed: %v", err)
+				}
+				want := ttl
+				if want == 0 {
+					want = 600 * time.Second
+				}
+				var issued, expires time.Time
+				if path == "cdn" {
+					seconds, err := strconv.ParseInt(captured.Query().Get("e"), 10, 64)
+					if err != nil {
+						t.Fatal(err)
+					}
+					expires = time.Unix(seconds, 0)
+					issued = before
+				} else {
+					issued, err = time.Parse("20060102T150405Z", captured.Query().Get("X-Amz-Date"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					seconds, err := strconv.ParseInt(captured.Query().Get("X-Amz-Expires"), 10, 64)
+					if err != nil {
+						t.Fatal(err)
+					}
+					expires = issued.Add(time.Duration(seconds) * time.Second)
+					if issued.Before(before.Truncate(time.Second)) || issued.After(after) {
+						t.Fatalf("issued at %v outside request window", issued)
+					}
+				}
+				actualTTL := expires.Sub(issued)
+				if actualTTL < want-time.Second || actualTTL > want || expires.After(after.Add(want)) {
+					t.Fatalf("signed window %v -> %v, want %v", issued, expires, want)
+				}
+			})
+		}
+	}
+}
 
 // 展示地址的签名时间由调用方对齐；同一时间窗内重复签发必须得到逐字节相同的 URL，
 // 否则浏览器 HTTP 缓存（以完整 URL 为键）在每次刷新画布时都会失效并重新下载对象。

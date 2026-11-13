@@ -26,6 +26,45 @@ func testPlatformURL(variants *[]ResourceVariant) func(ResourceVariant, time.Tim
 	}
 }
 
+func TestResolveAccessDefaultTTLAndAlignment(t *testing.T) {
+	for _, purpose := range []AccessPurpose{PurposeDisplay, PurposeProcess, PurposeCopy, PurposeDownload, PurposeProvider} {
+		for _, offset := range []time.Duration{0, time.Second, 149 * time.Second, 150 * time.Second} {
+			now := time.Unix(1800000000, 0).UTC().Add(offset)
+			var signedExpiry time.Time
+			access, err := ResolveAccess(testReadyResource("local"), storage.Settings{}, AccessOptions{Purpose: purpose}, now,
+				func(_ ResourceVariant, expires time.Time) (string, error) {
+					signedExpiry = expires
+					return "https://canvas.example/file", nil
+				})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if access.ExpiresAt == nil || !access.IssuedAt.Equal(now) || !signedExpiry.Equal(*access.ExpiresAt) {
+				t.Fatalf("issued/expiry mismatch: %+v, signed expiry %v", access, signedExpiry)
+			}
+			remaining := access.ExpiresAt.Sub(access.IssuedAt)
+			if remaining <= 0 || remaining > 600*time.Second {
+				t.Fatalf("remaining TTL = %v", remaining)
+			}
+			if browserCacheable(purpose) {
+				aligned := alignedSigningTime(now, 600*time.Second)
+				if !aligned.Equal(now.Truncate(150*time.Second)) || !signedExpiry.Equal(aligned.Add(600*time.Second)) || remaining < 450*time.Second {
+					t.Fatalf("alignment changed: now %v, aligned %v, expiry %v", now, aligned, signedExpiry)
+				}
+			} else if remaining != 600*time.Second {
+				t.Fatalf("one-shot TTL = %v", remaining)
+			}
+		}
+	}
+}
+
+func testPlatformURL(variants *[]ResourceVariant) func(ResourceVariant, time.Time) (string, error) {
+	return func(variant ResourceVariant, _ time.Time) (string, error) {
+		*variants = append(*variants, variant)
+		return "https://canvas.example/api/resources/resource-1/file", nil
+	}
+}
+
 func TestResolveAccessPolicyMatrix(t *testing.T) {
 	outboundtest.PublicDNS(t, "s3.amazonaws.com")
 	now := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)

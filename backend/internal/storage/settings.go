@@ -12,7 +12,7 @@ const (
 	volcengineTOSProvider = "volcengine"
 	s3Provider            = "s3"
 	defaultOSSPathPrefix  = "open-ai-canvas"
-	resourceAccessURLTTL  = 4 * time.Hour
+	resourceAccessURLTTL  = 10 * time.Minute
 )
 
 type Settings struct {
@@ -100,7 +100,7 @@ func NormalizeSettings(value Settings) Settings {
 		value.Runtime.AccessURLTTL = resourceAccessURLTTL
 	}
 	if value.Runtime.ProviderAccessURLTTL <= 0 {
-		value.Runtime.ProviderAccessURLTTL = 4 * time.Hour
+		value.Runtime.ProviderAccessURLTTL = resourceAccessURLTTL
 	}
 	if value.Runtime.MaxBufferedUploadSize <= 0 {
 		value.Runtime.MaxBufferedUploadSize = 64 << 20

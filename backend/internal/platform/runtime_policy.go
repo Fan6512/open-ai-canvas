@@ -164,8 +164,8 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 		},
 		Storage: RuntimeStoragePolicy{
 			TransferTimeoutSeconds:      120,
-			AccessURLTTLSeconds:         14_400,
-			ProviderAccessURLTTLSeconds: 14_400,
+			AccessURLTTLSeconds:         600,
+			ProviderAccessURLTTLSeconds: 600,
 			NonSeekableBufferMB:         64,
 			ErrorBodyKB:                 1,
 		},
