@@ -35,8 +35,8 @@ type OutboundHeader struct {
 }
 
 var (
-	outboundTransport          = newOutboundTransport(resolveOutboundHost)
-	customRelayTransport       = newOutboundTransport(resolveCustomRelayHost)
+	outboundTransport             = newOutboundTransport(resolveOutboundHost)
+	customRelayTransport          = newOutboundTransport(resolveCustomRelayHost)
 	blockedSpecialPurposePrefixes = []netip.Prefix{
 		netip.MustParsePrefix("0.0.0.0/8"),
 		netip.MustParsePrefix("100.64.0.0/10"),
