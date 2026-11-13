@@ -37,7 +37,7 @@ type OutboundHeader struct {
 var (
 	outboundTransport          = newOutboundTransport(resolveOutboundHost)
 	customRelayTransport       = newOutboundTransport(resolveCustomRelayHost)
-	blockedCustomRelayPrefixes = []netip.Prefix{
+	blockedSpecialPurposePrefixes = []netip.Prefix{
 		netip.MustParsePrefix("0.0.0.0/8"),
 		netip.MustParsePrefix("100.64.0.0/10"),
 		netip.MustParsePrefix("192.0.0.0/24"),
@@ -426,7 +426,7 @@ func resolveCustomRelayHost(ctx context.Context, host string) ([]net.IP, error) 
 	}
 	if !allowPrivateHost {
 		for _, ip := range addresses {
-			if blockedCustomRelayIP(ip) {
+			if blockedRestrictedOutboundIP(ip) {
 				return nil, BadAuthRequest("不允许访问保留地址或特殊用途地址")
 			}
 		}
@@ -457,7 +457,7 @@ func resolveOutboundHostWithPolicy(ctx context.Context, host string, allowPrivat
 	}
 	if !allowPrivateHost {
 		for _, ip := range addresses {
-			if blockedOutboundIP(ip) {
+			if blockedRestrictedOutboundIP(ip) {
 				return nil, BadAuthRequest("不允许访问本机、内网或链路本地地址")
 			}
 		}
@@ -469,7 +469,7 @@ func blockedOutboundIP(ip net.IP) bool {
 	return ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast()
 }
 
-func blockedCustomRelayIP(ip net.IP) bool {
+func blockedRestrictedOutboundIP(ip net.IP) bool {
 	if blockedOutboundIP(ip) {
 		return true
 	}
@@ -478,7 +478,7 @@ func blockedCustomRelayIP(ip net.IP) bool {
 		return true
 	}
 	address = address.Unmap()
-	for _, prefix := range blockedCustomRelayPrefixes {
+	for _, prefix := range blockedSpecialPurposePrefixes {
 		if prefix.Contains(address) {
 			return true
 		}
