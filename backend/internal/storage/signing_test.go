@@ -89,7 +89,8 @@ func TestDirectSigningPathsAccessURLTTL(t *testing.T) {
 						t.Fatalf("issued at %v outside request window", issued)
 					}
 				}
-				if expires.Sub(issued) <= 0 || expires.Sub(issued) > want || expires.Before(before.Add(want-time.Second)) || expires.After(after.Add(want)) {
+				actualTTL := expires.Sub(issued)
+				if actualTTL < want-time.Second || actualTTL > want || expires.After(after.Add(want)) {
 					t.Fatalf("signed window %v -> %v, want %v", issued, expires, want)
 				}
 			})
