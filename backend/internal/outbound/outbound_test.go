@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"context"
 	"encoding/base64"
 	"net"
 	"net/http"
@@ -193,14 +194,44 @@ func TestValidateCustomRelayURLRejectsCredentialsAndFragment(t *testing.T) {
 	}
 }
 
-func TestBlockedCustomRelayIPRejectsCarrierGradeNATAndReservedRanges(t *testing.T) {
-	for _, value := range []string{"100.100.100.200", "192.0.2.10", "198.18.0.1", "2001:db8::1"} {
-		if !blockedCustomRelayIP(net.ParseIP(value)) {
-			t.Fatalf("blockedCustomRelayIP(%q) = false", value)
+func TestBlockedRestrictedOutboundIPRejectsCarrierGradeNATAndReservedRanges(t *testing.T) {
+	for _, value := range []string{"100.100.100.200", "192.0.2.10", "198.18.0.1", "2001:db8::1", "100::1"} {
+		if !blockedRestrictedOutboundIP(net.ParseIP(value)) {
+			t.Fatalf("blockedRestrictedOutboundIP(%q) = false", value)
 		}
 	}
-	if blockedCustomRelayIP(net.ParseIP("8.8.8.8")) {
-		t.Fatal("blockedCustomRelayIP() rejected a public address")
+	if blockedRestrictedOutboundIP(net.ParseIP("8.8.8.8")) {
+		t.Fatal("blockedRestrictedOutboundIP() rejected a public address")
+	}
+}
+
+func TestResolveOutboundHostWithPolicyRejectsReservedSpecialPurposeAddresses(t *testing.T) {
+	for _, host := range []string{
+		"0.0.0.1",
+		"100.64.0.1",
+		"100.100.100.200",
+		"192.0.0.1",
+		"192.0.2.10",
+		"198.18.0.1",
+		"198.51.100.1",
+		"203.0.113.1",
+		"240.0.0.1",
+		"100::1",
+		"2001:db8::1",
+	} {
+		t.Run(host, func(t *testing.T) {
+			addresses, err := net.DefaultResolver.LookupIP(context.Background(), "ip", host)
+			if err != nil || len(addresses) != 1 {
+				t.Fatalf("literal lookup for %q = %v, %v", host, addresses, err)
+			}
+			_, err = resolveOutboundHostWithPolicy(context.Background(), host, false)
+			if err == nil || !strings.Contains(err.Error(), "不允许访问本机、内网或链路本地地址") {
+				t.Fatalf("resolveOutboundHostWithPolicy(%q) = %v, want reserved-address rejection", host, err)
+			}
+		})
+	}
+	if _, err := resolveOutboundHostWithPolicy(context.Background(), "8.8.8.8", false); err != nil {
+		t.Fatalf("public address was rejected: %v", err)
 	}
 }
 
