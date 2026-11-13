@@ -35,7 +35,7 @@ func resolveMCPHost(ctx context.Context, host string) ([]net.IP, error) {
 	}
 	if !trusted {
 		for _, ip := range addresses {
-			if blockedCustomRelayIP(ip) {
+			if blockedRestrictedOutboundIP(ip) {
 				return nil, BadAuthRequest("MCP 不允许访问本机、私网或保留地址")
 			}
 		}
