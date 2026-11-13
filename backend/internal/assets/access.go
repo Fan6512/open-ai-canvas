@@ -108,7 +108,7 @@ func ResolveAccess(resource *model.Resource, setting storage.Settings, options A
 	if options.Purpose == PurposeEcommerceExport && (resource.Kind != "image" || resource.Size > 32*1024*1024 || resource.Size <= 0 || (resource.MimeType != "image/png" && resource.MimeType != "image/jpeg" && resource.MimeType != "image/webp")) {
 		return nil, AccessError(http.StatusBadRequest, "ecommerce_export_invalid", "电商导出仅支持32 MB以内的PNG、JPEG和WebP商品图片")
 	}
-	// 有效期来自后台「资源与请求策略」；未注入运行时策略时回落到存储层默认值（均为 4 小时）。
+	// 有效期来自后台「资源与请求策略」；未注入时用户与 Provider 访问默认均为 10 分钟。
 	runtime := storage.NormalizeSettings(storage.Settings{Runtime: setting.Runtime}).Runtime
 	ttl := runtime.AccessURLTTL
 	if options.Purpose == PurposeProvider {
