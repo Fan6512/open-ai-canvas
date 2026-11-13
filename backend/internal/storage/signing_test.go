@@ -15,8 +15,8 @@ import (
 
 func TestNormalizeAccessURLTTL(t *testing.T) {
 	tests := []struct {
-		name                  string
-		access, provider      time.Duration
+		name                     string
+		access, provider         time.Duration
 		wantAccess, wantProvider time.Duration
 	}{
 		{"defaults", 0, 0, 10 * time.Minute, 10 * time.Minute},
