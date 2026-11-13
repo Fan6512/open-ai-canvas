@@ -13,7 +13,9 @@ import (
 	"log"
 	"mime"
 	"mime/multipart"
+	"os"
 	"net/http"
+	"net/netip"
 	"net/textproto"
 	"net/url"
 	"strconv"
@@ -235,6 +237,50 @@ func doJSON(req *http.Request, target interface{}) error {
 	return nil
 }
 
+const maxProviderOutboundRedirects = 5
+
+// validateProviderOutboundURL keeps native media-provider traffic on HTTPS.
+// HTTP is retained only for an explicitly pinned private upstream or a literal
+// private/loopback test endpoint when the operator has enabled private upstreams.
+func validateProviderOutboundURL(rawURL string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Hostname() == "" {
+		return nil, BadAuthRequest("外部服务地址无效")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "https" && (scheme != "http" || !providerAllowsPrivateHTTP(parsed.Hostname())) {
+		return nil, BadAuthRequest("模型服务地址必须使用 HTTPS")
+	}
+	return ValidateOutboundURL(rawURL)
+}
+
+func providerAllowsPrivateHTTP(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "" {
+		return false
+	}
+	if AllowedPrivateUpstreamHost(host) {
+		return true
+	}
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS")))
+	if value != "1" && value != "true" && value != "yes" {
+		return false
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	address, err := netip.ParseAddr(host)
+	return err == nil && (address.IsLoopback() || address.IsPrivate() || address.IsLinkLocalUnicast())
+}
+
+func providerOutboundRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxProviderOutboundRedirects {
+		return errors.New("外部服务重定向次数过多")
+	}
+	_, err := validateProviderOutboundURL(req.URL.String())
+	return err
+}
+
 type providerProxyURLKey struct{}
 
 func doBinary(req *http.Request) ([]byte, string, error) {
@@ -301,12 +347,13 @@ func doBinaryWithConsumer(req *http.Request, onChunk func(string, []byte)) ([]by
 			defer release()
 		}
 	}
-	if _, err := ValidateOutboundURL(req.URL.String()); err != nil {
+	if _, err := validateProviderOutboundURL(req.URL.String()); err != nil {
 		recordProviderRequest(req, startedAt, 0, nil, err)
 		return nil, "", err
 	}
 	ApplyDefaultOutboundHeaders(req)
 	client := OutboundHTTPClientWithProxy(requestTimeout, channelProxyURL)
+	client.CheckRedirect = providerOutboundRedirectPolicy
 	resp, err := client.Do(req)
 	if err != nil {
 		err = providerConnectionError(err)
