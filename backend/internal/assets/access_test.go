@@ -58,12 +58,6 @@ func TestResolveAccessDefaultTTLAndAlignment(t *testing.T) {
 	}
 }
 
-func testPlatformURL(variants *[]ResourceVariant) func(ResourceVariant, time.Time) (string, error) {
-	return func(variant ResourceVariant, _ time.Time) (string, error) {
-		*variants = append(*variants, variant)
-		return "https://canvas.example/api/resources/resource-1/file", nil
-	}
-}
 
 func TestResolveAccessPolicyMatrix(t *testing.T) {
 	outboundtest.PublicDNS(t, "s3.amazonaws.com")
